@@ -1,0 +1,11 @@
+{
+	"id": "canvas-positioning-toolkit",
+	"name": "Canvas Positioning Toolkit",
+	"version": "1.0.0",
+	"minAppVersion": "1.7.0",
+	"description": "Auto-layout, arrange, and move Canvas cards without precise dragging: grid-tidy a messy board, pick up and place a card with a hotkey, or find and grab a card by text search in a dense cluster.",
+	"author": "ValleytheKnight",
+	"authorUrl": "https://github.com/ValleytheKnight",
+	"fundingUrl": "https://www.buymeacoffee.com/valleytheknight",
+	"isDesktopOnly": false
+}

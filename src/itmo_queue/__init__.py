@@ -1,0 +1,1 @@
+"""ITMO.Queue backend package."""
