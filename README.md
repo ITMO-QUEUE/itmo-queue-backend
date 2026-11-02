@@ -134,6 +134,9 @@ docker compose exec backend python -m alembic upgrade head
 
 ## Подключение модулей
 
+Правила описания запросов, ответов, параметров и ошибок:
+[Контракты OpenAPI](docs/openapi.md).
+
 - `src/itmo_queue/main.py` — фабрика приложения и lifespan, создающий и закрывающий
   пулы SQLAlchemy и Redis.
 - `src/itmo_queue/core/config.py` — Pydantic Settings.

@@ -41,6 +41,7 @@ async def test_documentation(client, path):
     response = await client.get(path)
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
+    assert "/openapi.json" in response.text
 
 
 async def test_openapi(client):
@@ -53,3 +54,20 @@ async def test_openapi(client):
     assert response_schema["application/json"]["schema"]["$ref"] == (
         "#/components/schemas/HealthResponse"
     )
+
+
+async def test_health_contract(client):
+    schema = (await client.get("/openapi.json")).json()
+    operation = schema["paths"]["/health"]["get"]
+    assert operation["operationId"] == "getHealth"
+    assert operation["summary"]
+    assert operation["description"]
+    assert operation["tags"] == ["Infrastructure"]
+    assert "requestBody" not in operation
+    assert not operation.get("parameters")
+    assert set(operation["responses"]) == {"200"}
+    model = schema["components"]["schemas"]["HealthResponse"]
+    assert model["required"] == ["status"]
+    assert model["properties"]["status"]["const"] == "ok"
+    assert model["properties"]["status"]["description"]
+    assert model["properties"]["status"]["examples"] == ["ok"]
