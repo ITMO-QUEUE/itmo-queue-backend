@@ -1,4 +1,4 @@
-# ITMO.Queue backend
+﻿# ITMO.Queue backend
 
 Минимальная инфраструктурная основа модульного монолита: FastAPI, PostgreSQL,
 SQLAlchemy 2.x, Alembic и Redis. Бизнес-модули пока не реализованы.
@@ -129,8 +129,8 @@ python -m alembic current
 docker compose exec backend python -m alembic upgrade head
 ```
 
-Миграции выполняются явно, а не при старте приложения. Без ревизий `upgrade head`
-не создаёт бизнес-таблиц. Автогенерацию всегда нужно просматривать перед применением.
+Миграции выполняются явно, а не при старте приложения. Команда `upgrade head`
+применяет имеющиеся ревизии. Автогенерацию всегда нужно просматривать перед применением.
 
 ## Подключение модулей
 
@@ -140,7 +140,7 @@ docker compose exec backend python -m alembic upgrade head
 - `src/itmo_queue/api/router.py` — общий роутер с префиксом `/api/v1`.
 - `src/itmo_queue/db/` — общая база моделей и зависимость `get_db_session`.
 - `src/itmo_queue/core/redis.py` — зависимость `get_redis`.
-- `alembic/` — инфраструктура миграций, пока без бизнес-ревизий.
+- `alembic/` — инфраструктура миграций и начальная ревизия схемы.
 
 Новые модули размещайте в пакете `itmo_queue` и подключайте их `APIRouter`
 через `api_router.include_router(...)`. Указывайте `tags`, `summary`, `description`
