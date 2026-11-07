@@ -1,4 +1,3 @@
-from itmo_queue.db.models.student import Student
 from itmo_queue.db.models.group import Group  # noqa
 import asyncio
 from logging.config import fileConfig

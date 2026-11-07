@@ -1,7 +1,9 @@
-import pytest
 import uuid
-from httpx import AsyncClient, ASGITransport
+
+import pytest
 from asgi_lifespan import LifespanManager
+from httpx import ASGITransport, AsyncClient
+
 from itmo_queue.main import app
 
 BASE_URL = "http://test/api/v1"
@@ -21,8 +23,13 @@ async def test_create_and_get_student():
 
             response = await client.post(
                 f"{BASE_URL}/students",
-                json={"name": "Тест Студент", "login": login, "isu": isu, "password": "password123"},
-                headers=ADMIN_HEADERS
+                json={
+                    "name": "Тест Студент",
+                    "login": login,
+                    "isu": isu,
+                    "password": "password123",
+                },
+                headers=ADMIN_HEADERS,
             )
             assert response.status_code == 201
             data = response.json()
@@ -32,7 +39,9 @@ async def test_create_and_get_student():
             assert data["role"] == "student"
             student_id = data["id"]
 
-            get_response = await client.get(f"{BASE_URL}/students/{student_id}", headers=ADMIN_HEADERS)
+            get_response = await client.get(
+                f"{BASE_URL}/students/{student_id}", headers=ADMIN_HEADERS
+            )
             assert get_response.status_code == 200
             assert get_response.json()["login"] == login
 
@@ -45,7 +54,12 @@ async def test_create_student_no_rights():
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.post(
                 f"{BASE_URL}/students",
-                json={"name": "Хакер", "login": "hacker", "isu": "000000", "password": "password123"}
+                json={
+                    "name": "Хакер",
+                    "login": "hacker",
+                    "isu": "000000",
+                    "password": "password123",
+                },
             )
             assert response.status_code == 403
             assert response.json()["detail"] == "Access denied. Admin rights required."
@@ -58,13 +72,19 @@ async def test_duplicate_student_error():
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             unique_id = str(uuid.uuid4())[:8]
-            payload = {"name": "Дубликат", "login": f"dup_{unique_id}", "isu": f"111{unique_id}",
-                       "password": "password123"}
+            payload = {
+                "name": "Дубликат",
+                "login": f"dup_{unique_id}",
+                "isu": f"111{unique_id}",
+                "password": "password123",
+            }
 
             await client.post(f"{BASE_URL}/students", json=payload, headers=ADMIN_HEADERS)
 
             # Пытаемся создать точно такого же - ожидаем 409
-            response = await client.post(f"{BASE_URL}/students", json=payload, headers=ADMIN_HEADERS)
+            response = await client.post(
+                f"{BASE_URL}/students", json=payload, headers=ADMIN_HEADERS
+            )
             assert response.status_code == 409
             assert "already exists" in response.json()["detail"]
 
@@ -79,14 +99,20 @@ async def test_soft_delete_student():
 
             res = await client.post(
                 f"{BASE_URL}/students",
-                json={"name": "На удаление", "login": f"del_{unique_id}", "isu": f"222{unique_id}",
-                      "password": "password123"},
-                headers=ADMIN_HEADERS
+                json={
+                    "name": "На удаление",
+                    "login": f"del_{unique_id}",
+                    "isu": f"222{unique_id}",
+                    "password": "password123",
+                },
+                headers=ADMIN_HEADERS,
             )
             assert res.status_code == 201
             student_id = res.json()["id"]
 
-            del_res = await client.delete(f"{BASE_URL}/students/{student_id}", headers=ADMIN_HEADERS)
+            del_res = await client.delete(
+                f"{BASE_URL}/students/{student_id}", headers=ADMIN_HEADERS
+            )
             assert del_res.status_code == 204
 
             get_res = await client.get(f"{BASE_URL}/students/{student_id}", headers=ADMIN_HEADERS)
@@ -102,15 +128,31 @@ async def test_search_and_pagination():
             unique_id = str(uuid.uuid4())[:8]
             alpha_login = f"alpha_{unique_id}"
 
-            await client.post(f"{BASE_URL}/students",
-                              json={"name": "Альфа", "login": alpha_login, "isu": f"333{unique_id}",
-                                    "password": "pass123"}, headers=ADMIN_HEADERS)
-            await client.post(f"{BASE_URL}/students",
-                              json={"name": "Бета", "login": f"beta_{unique_id}", "isu": f"444{unique_id}",
-                                    "password": "pass123"}, headers=ADMIN_HEADERS)
+            await client.post(
+                f"{BASE_URL}/students",
+                json={
+                    "name": "Альфа",
+                    "login": alpha_login,
+                    "isu": f"333{unique_id}",
+                    "password": "pass123",
+                },
+                headers=ADMIN_HEADERS,
+            )
+            await client.post(
+                f"{BASE_URL}/students",
+                json={
+                    "name": "Бета",
+                    "login": f"beta_{unique_id}",
+                    "isu": f"444{unique_id}",
+                    "password": "pass123",
+                },
+                headers=ADMIN_HEADERS,
+            )
 
             # Ищем по уникальному логину Альфы
-            response = await client.get(f"{BASE_URL}/students?search={alpha_login}", headers=ADMIN_HEADERS)
+            response = await client.get(
+                f"{BASE_URL}/students?search={alpha_login}", headers=ADMIN_HEADERS
+            )
             assert response.status_code == 200
             data = response.json()
 

@@ -1,4 +1,5 @@
 import uuid
+from typing import Annotated  # <-- ДОБАВЛЕНО
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, func, or_
@@ -11,7 +12,6 @@ from itmo_queue.api.schemas.student import StudentCreate, StudentUpdate, Student
 from itmo_queue.api.deps import get_current_admin
 
 
-# Функция хеширования напрямую через bcrypt
 def get_password_hash(password: str) -> str:
     pwd_bytes = password.encode('utf-8')[:72]
     salt = bcrypt.gensalt()
@@ -20,6 +20,9 @@ def get_password_hash(password: str) -> str:
 
 
 router = APIRouter(prefix="/students", tags=["students"])
+
+# Создаем алиас для сессии, чтобы линтер не ругался на Depends в аргументах
+SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 
 
 @router.post(
@@ -33,7 +36,7 @@ router = APIRouter(prefix="/students", tags=["students"])
         409: {"description": "Login or ISU already exists"}
     }
 )
-async def create_student(payload: StudentCreate, session: AsyncSession = Depends(get_db_session)):
+async def create_student(payload: StudentCreate, session: SessionDep):  # <-- ИСПОЛЬЗУЕМ SessionDep
     student = Student(
         name=payload.name,
         login=payload.login,
@@ -43,11 +46,11 @@ async def create_student(payload: StudentCreate, session: AsyncSession = Depends
     try:
         session.add(student)
         await session.commit()
-        await session.refresh(student)  # Обновляем объект, чтобы получить created_at из базы
+        await session.refresh(student)
         return student
-    except IntegrityError:
+    except IntegrityError as err:  # <-- ДОБАВЛЕНО as err
         await session.rollback()
-        raise HTTPException(status_code=409, detail="Login or ISU already exists")
+        raise HTTPException(status_code=409, detail="Login or ISU already exists") from err  # <-- ДОБАВЛЕНО from err
 
 
 @router.get(
@@ -58,12 +61,13 @@ async def create_student(payload: StudentCreate, session: AsyncSession = Depends
     responses={403: {"description": "Access denied. Admin rights required."}}
 )
 async def list_students(
+        session: SessionDep,
         limit: int = Query(20, ge=1, le=100, description="Page size"),
         offset: int = Query(0, ge=0, description="Offset"),
         search: str | None = Query(None, description="Search by name, login, or ISU"),
-        session: AsyncSession = Depends(get_db_session),
 ):
-    query = select(Student).where(Student.is_active == True)
+    # Исправлено сравнение с True (E712)
+    query = select(Student).where(Student.is_active.is_(True))
 
     if search:
         search_filter = f"%{search}%"
@@ -94,7 +98,7 @@ async def list_students(
         404: {"description": "Student not found"}
     }
 )
-async def get_student(student_id: uuid.UUID, session: AsyncSession = Depends(get_db_session)):
+async def get_student(student_id: uuid.UUID, session: SessionDep):
     student = await session.get(Student, student_id)
     if not student or not student.is_active:
         raise HTTPException(status_code=404, detail="Student not found")
@@ -115,9 +119,8 @@ async def get_student(student_id: uuid.UUID, session: AsyncSession = Depends(get
 async def update_student(
         student_id: uuid.UUID,
         payload: StudentUpdate,
-        session: AsyncSession = Depends(get_db_session)
+        session: SessionDep
 ):
-    # Этот запрос автоматически начнет транзакцию
     student = await session.get(Student, student_id)
     if not student or not student.is_active:
         raise HTTPException(status_code=404, detail="Student not found")
@@ -131,13 +134,12 @@ async def update_student(
         setattr(student, field, value)
 
     try:
-        # Просто коммитим изменения, так как транзакция уже началась при session.get()
         await session.commit()
         await session.refresh(student)
         return student
-    except IntegrityError:
+    except IntegrityError as err:
         await session.rollback()
-        raise HTTPException(status_code=409, detail="Login or ISU already exists")
+        raise HTTPException(status_code=409, detail="Login or ISU already exists") from err
 
 
 @router.delete(
@@ -150,13 +152,10 @@ async def update_student(
         404: {"description": "Student not found"}
     }
 )
-async def delete_student(student_id: uuid.UUID, session: AsyncSession = Depends(get_db_session)):
-    # Этот запрос автоматически начнет транзакцию
+async def delete_student(student_id: uuid.UUID, session: SessionDep):
     student = await session.get(Student, student_id)
     if not student or not student.is_active:
         raise HTTPException(status_code=404, detail="Student not found")
 
-    # Мягкое удаление
     student.is_active = False
-    # Просто коммитим, без повторного begin()
     await session.commit()

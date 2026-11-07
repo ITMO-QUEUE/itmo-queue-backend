@@ -1,19 +1,24 @@
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from itmo_queue.db.session import get_db_session
+from itmo_queue.api.schemas.group import GroupCreate, GroupList, GroupRead, GroupUpdate
 from itmo_queue.db.models.group import Group
-from itmo_queue.api.schemas.group import GroupCreate, GroupUpdate, GroupRead, GroupList
+from itmo_queue.db.session import get_db_session
 
 router = APIRouter(prefix="/groups", tags=["groups"])
 
 
-@router.post("", response_model=GroupRead, status_code=status.HTTP_201_CREATED,
-             operation_id="createGroup",
-             responses={409: {"description": "Group with this name already exists"}})
+@router.post(
+    "",
+    response_model=GroupRead,
+    status_code=status.HTTP_201_CREATED,
+    operation_id="createGroup",
+    responses={409: {"description": "Group with this name already exists"}},
+)
 async def create_group(payload: GroupCreate, session: AsyncSession = Depends(get_db_session)):
     group = Group(**payload.model_dump())
     try:
@@ -26,9 +31,9 @@ async def create_group(payload: GroupCreate, session: AsyncSession = Depends(get
 
 @router.get("", response_model=GroupList, operation_id="listGroups")
 async def list_groups(
-        limit: int = Query(20, ge=1, le=100, description="Page size"),
-        offset: int = Query(0, ge=0, description="Offset"),
-        session: AsyncSession = Depends(get_db_session),
+    limit: int = Query(20, ge=1, le=100, description="Page size"),
+    offset: int = Query(0, ge=0, description="Offset"),
+    session: AsyncSession = Depends(get_db_session),
 ):
     total = await session.scalar(select(func.count()).select_from(Group))
     result = await session.scalars(
@@ -36,8 +41,13 @@ async def list_groups(
     )
     return {"items": result.all(), "total": total, "limit": limit, "offset": offset}
 
-@router.get("/{group_id}", response_model=GroupRead, operation_id="getGroup",
-            responses={404: {"description": "Group not found"}})
+
+@router.get(
+    "/{group_id}",
+    response_model=GroupRead,
+    operation_id="getGroup",
+    responses={404: {"description": "Group not found"}},
+)
 async def get_group(group_id: uuid.UUID, session: AsyncSession = Depends(get_db_session)):
     group = await session.get(Group, group_id)
     if not group:
@@ -45,10 +55,18 @@ async def get_group(group_id: uuid.UUID, session: AsyncSession = Depends(get_db_
     return group
 
 
-@router.patch("/{group_id}", response_model=GroupRead, operation_id="updateGroup",
-              responses={404: {"description": "Group not found"},
-                         409: {"description": "Group with this name already exists"}})
-async def update_group(group_id: uuid.UUID, payload: GroupUpdate, session: AsyncSession = Depends(get_db_session)):
+@router.patch(
+    "/{group_id}",
+    response_model=GroupRead,
+    operation_id="updateGroup",
+    responses={
+        404: {"description": "Group not found"},
+        409: {"description": "Group with this name already exists"},
+    },
+)
+async def update_group(
+    group_id: uuid.UUID, payload: GroupUpdate, session: AsyncSession = Depends(get_db_session)
+):
     group = await session.get(Group, group_id)
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
@@ -64,8 +82,12 @@ async def update_group(group_id: uuid.UUID, payload: GroupUpdate, session: Async
         raise HTTPException(status_code=409, detail="Group with this name already exists")
 
 
-@router.delete("/{group_id}", status_code=status.HTTP_204_NO_CONTENT, operation_id="deleteGroup",
-               responses={404: {"description": "Group not found"}})
+@router.delete(
+    "/{group_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    operation_id="deleteGroup",
+    responses={404: {"description": "Group not found"}},
+)
 async def delete_group(group_id: uuid.UUID, session: AsyncSession = Depends(get_db_session)):
     group = await session.get(Group, group_id)
     if not group:
