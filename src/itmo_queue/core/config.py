@@ -6,10 +6,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # Настройки приложения
+    # Настройки приложения (в нижнем регистре, как ждут тесты и main.py)
     app_name: str = "ITMO.Queue"
-    ENVIRONMENT: str = "development"
-    LOG_LEVEL: str = "INFO"
+    environment: str = "development"
+    log_level: str = "INFO"
 
     # Настройки PostgreSQL
     POSTGRES_USER: str = "postgres"
@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "itmo_queue"
 
-    # Возможность задать полный URL напрямую (удобно для CI)
+    # Возможность задать полный URL напрямую (для CI)
     DATABASE_URL: str | None = None
 
     # Настройки Redis
