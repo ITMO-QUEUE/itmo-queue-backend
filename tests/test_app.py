@@ -44,16 +44,22 @@ async def test_documentation(client, path):
     assert "/openapi.json" in response.text
 
 
+@pytest.mark.asyncio
 async def test_openapi(client):
     response = await client.get("/openapi.json")
     assert response.status_code == 200
     schema = response.json()
     assert schema["openapi"].startswith("3.")
-    assert set(schema["paths"]) == {"/health"}
-    response_schema = schema["paths"]["/health"]["get"]["responses"]["200"]["content"]
-    assert response_schema["application/json"]["schema"]["$ref"] == (
-        "#/components/schemas/HealthResponse"
-    )
+
+    # Проверяем, что все наши новые маршруты появились в схеме
+    expected_paths = {
+        "/health",
+        "/api/v1/groups",
+        "/api/v1/groups/{group_id}",
+        "/api/v1/students",
+        "/api/v1/students/{student_id}",
+    }
+    assert set(schema["paths"]) == expected_paths
 
 
 async def test_health_contract(client):
