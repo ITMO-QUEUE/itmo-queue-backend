@@ -38,10 +38,15 @@ class Settings(BaseSettings):
         )
 
     @property
-    def redis_url(self) -> str:
+    def redis_url(self) -> URL:
         if self.REDIS_URL:
-            return self.REDIS_URL
-        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+            return make_url(self.REDIS_URL)
+        return URL.create(
+            drivername="redis",
+            host=self.REDIS_HOST,
+            port=self.REDIS_PORT,
+            database=str(self.REDIS_DB),
+        )
 
 
 @lru_cache
