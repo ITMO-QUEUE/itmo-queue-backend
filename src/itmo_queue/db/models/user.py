@@ -19,9 +19,7 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     login: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     # У админов может не быть ИСУ
-    isu: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, index=True
-    )
+    isu: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
 
     # Роль: "student", "admin" и т.д.
