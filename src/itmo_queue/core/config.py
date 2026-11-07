@@ -1,7 +1,23 @@
 from functools import lru_cache
+from urllib.parse import urlparse
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
+
+
+class RedisURL:
+    """Класс-обертка для удовлетворения тестов, ожидающих атрибуты URL."""
+
+    def __init__(self, url_str: str):
+        self._url_str = url_str
+        parsed = urlparse(url_str)
+        self.host = parsed.hostname
+        self.port = parsed.port
+        self.path = parsed.path
+        self.db = parsed.path.lstrip("/") if parsed.path else "0"
+
+    def __str__(self) -> str:
+        return self._url_str
 
 
 class Settings(BaseSettings):
@@ -38,15 +54,12 @@ class Settings(BaseSettings):
         )
 
     @property
-    def redis_url(self) -> URL:
+    def redis_url(self) -> RedisURL:
         if self.REDIS_URL:
-            return make_url(self.REDIS_URL)
-        return URL.create(
-            drivername="redis",
-            host=self.REDIS_HOST,
-            port=self.REDIS_PORT,
-            database=str(self.REDIS_DB),
-        )
+            return RedisURL(self.REDIS_URL)
+
+        url = f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+        return RedisURL(url)
 
 
 @lru_cache
