@@ -1,7 +1,9 @@
-import pytest
 import uuid
-from httpx import AsyncClient, ASGITransport
+
+import pytest
 from asgi_lifespan import LifespanManager
+from httpx import ASGITransport, AsyncClient
+
 from itmo_queue.main import app
 
 BASE_URL = "http://test/api/v1"
@@ -20,7 +22,12 @@ async def test_create_and_get_student():
             # Отправляем БЕЗ заголовков
             response = await client.post(
                 f"{BASE_URL}/students",
-                json={"name": "Тест Студент", "login": login, "isu": isu, "password": "password123"}
+                json={
+                    "name": "Тест Студент",
+                    "login": login,
+                    "isu": isu,
+                    "password": "password123",
+                },
             )
             assert response.status_code == 201
             data = response.json()
@@ -37,6 +44,7 @@ async def test_create_and_get_student():
 
 # Тест test_create_student_no_rights МЫ УДАЛИЛИ, так как проверки прав больше нет!
 
+
 @pytest.mark.asyncio
 async def test_duplicate_student_error():
     """Ошибка 409: Дублирование логина или ИСУ"""
@@ -44,8 +52,12 @@ async def test_duplicate_student_error():
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             unique_id = str(uuid.uuid4())[:8]
-            payload = {"name": "Дубликат", "login": f"dup_{unique_id}", "isu": f"111{unique_id}",
-                       "password": "password123"}
+            payload = {
+                "name": "Дубликат",
+                "login": f"dup_{unique_id}",
+                "isu": f"111{unique_id}",
+                "password": "password123",
+            }
 
             await client.post(f"{BASE_URL}/students", json=payload)
 
@@ -65,8 +77,12 @@ async def test_soft_delete_student():
 
             res = await client.post(
                 f"{BASE_URL}/students",
-                json={"name": "На удаление", "login": f"del_{unique_id}", "isu": f"222{unique_id}",
-                      "password": "password123"}
+                json={
+                    "name": "На удаление",
+                    "login": f"del_{unique_id}",
+                    "isu": f"222{unique_id}",
+                    "password": "password123",
+                },
             )
             assert res.status_code == 201
             student_id = res.json()["id"]
@@ -87,12 +103,24 @@ async def test_search_and_pagination():
             unique_id = str(uuid.uuid4())[:8]
             alpha_login = f"alpha_{unique_id}"
 
-            await client.post(f"{BASE_URL}/students",
-                              json={"name": "Альфа", "login": alpha_login, "isu": f"333{unique_id}",
-                                    "password": "pass123"})
-            await client.post(f"{BASE_URL}/students",
-                              json={"name": "Бета", "login": f"beta_{unique_id}", "isu": f"444{unique_id}",
-                                    "password": "pass123"})
+            await client.post(
+                f"{BASE_URL}/students",
+                json={
+                    "name": "Альфа",
+                    "login": alpha_login,
+                    "isu": f"333{unique_id}",
+                    "password": "pass123",
+                },
+            )
+            await client.post(
+                f"{BASE_URL}/students",
+                json={
+                    "name": "Бета",
+                    "login": f"beta_{unique_id}",
+                    "isu": f"444{unique_id}",
+                    "password": "pass123",
+                },
+            )
 
             # Ищем по уникальному логину Альфы
             response = await client.get(f"{BASE_URL}/students?search={alpha_login}")

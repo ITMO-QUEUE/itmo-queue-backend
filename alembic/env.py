@@ -1,5 +1,5 @@
 from itmo_queue.db.models.group import Group  # noqa
-from itmo_queue.db.models.user import User # noqa
+from itmo_queue.db.models.user import User  # noqa
 import asyncio
 from logging.config import fileConfig
 
