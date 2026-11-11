@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     environment: str = "development"
     log_level: str = "INFO"
 
+    ADMIN_TOKEN: str = "super_secret_admin_token"
+
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_HOST: str = "localhost"

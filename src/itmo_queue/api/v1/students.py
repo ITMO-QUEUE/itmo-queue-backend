@@ -6,6 +6,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from itmo_queue.api.deps import get_current_admin
 from itmo_queue.api.schemas.student import (
     StudentCreate,
     StudentList,
@@ -26,6 +27,7 @@ SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
     response_model=StudentRead,
     status_code=status.HTTP_201_CREATED,
     operation_id="createStudent",
+    dependencies=[Depends(get_current_admin)],
     responses={
         409: {"description": "Login or ISU already exists"},
     },
@@ -53,6 +55,7 @@ async def create_student(payload: StudentCreate, session: SessionDep):
     "",
     response_model=StudentList,
     operation_id="listStudents",
+    dependencies=[Depends(get_current_admin)],
 )
 async def list_students(
     session: SessionDep,
@@ -93,6 +96,7 @@ async def list_students(
     "/{student_id}",
     response_model=StudentRead,
     operation_id="getStudent",
+    dependencies=[Depends(get_current_admin)],
     responses={
         404: {"description": "Student not found"},
     },
@@ -110,9 +114,11 @@ async def get_student(student_id: uuid.UUID, session: SessionDep):
     "/{student_id}",
     response_model=StudentRead,
     operation_id="updateStudent",
+    dependencies=[Depends(get_current_admin)],
     responses={
         404: {"description": "Student not found"},
         409: {"description": "Login or ISU already exists"},
+        422: {"description": "Validation Error"},
     },
 )
 async def update_student(student_id: uuid.UUID, payload: StudentUpdate, session: SessionDep):
@@ -142,6 +148,7 @@ async def update_student(student_id: uuid.UUID, payload: StudentUpdate, session:
     "/{student_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     operation_id="deleteStudent",
+    dependencies=[Depends(get_current_admin)],
     responses={
         404: {"description": "Student not found"},
     },

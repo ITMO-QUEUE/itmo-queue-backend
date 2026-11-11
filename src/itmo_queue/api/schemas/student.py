@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class StudentBase(BaseModel):
@@ -19,6 +19,15 @@ class StudentUpdate(BaseModel):
     login: str | None = Field(None, min_length=3, max_length=100)
     isu: str | None = Field(None, min_length=1, max_length=50)
     password: str | None = Field(None, min_length=6)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_explicit_nulls(cls, data: dict):
+        if isinstance(data, dict):
+            for key, value in data.items():
+                if value is None:
+                    raise ValueError(f"Field '{key}' cannot be null")
+        return data
 
 
 class StudentRead(StudentBase):
