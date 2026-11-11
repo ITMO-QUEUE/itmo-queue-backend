@@ -7,10 +7,10 @@ from alembic import context
 from sqlalchemy import Connection, pool
 from sqlalchemy.ext.asyncio import create_async_engine
 
+import itmo_queue.models  # noqa: F401
 from itmo_queue.core.config import get_settings
 from itmo_queue.db.base import Base
 
-# Import future modules' SQLAlchemy models here before accessing Base.metadata.
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
