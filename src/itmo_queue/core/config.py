@@ -1,35 +1,67 @@
 from functools import lru_cache
-from typing import Literal
+from urllib.parse import urlparse
 
-from pydantic import Field, RedisDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from sqlalchemy import URL
+from sqlalchemy.engine import URL, make_url
+
+
+class RedisURL:
+    """Класс-обертка для удовлетворения тестов, ожидающих атрибуты URL."""
+
+    def __init__(self, url_str: str):
+        self._url_str = url_str
+        parsed = urlparse(url_str)
+        self.host = parsed.hostname
+        self.port = parsed.port
+        self.path = parsed.path
+        self.db = parsed.path.lstrip("/") if parsed.path else "0"
+
+    def __str__(self) -> str:
+        return self._url_str
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "ITMO.Queue"
-    environment: Literal["development", "test", "production"] = "development"
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
-    postgres_host: str = "localhost"
-    postgres_port: int = Field(default=5432, ge=1, le=65535)
-    postgres_db: str = "itmo_queue"
-    postgres_user: str = "itmo_queue"
-    postgres_password: SecretStr = SecretStr("")
-    redis_url: RedisDsn = RedisDsn("redis://localhost:6379/0")
+    environment: str = "development"
+    log_level: str = "INFO"
+
+    ADMIN_TOKEN: str = "super_secret_admin_token"
+
+    POSTGRES_USER: str = "postgres"
+    POSTGRES_PASSWORD: str = "postgres"
+    POSTGRES_HOST: str = "localhost"
+    POSTGRES_PORT: int = 5432
+    POSTGRES_DB: str = "itmo_queue"
+
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
+
+    DATABASE_URL: str | None = None
+    REDIS_URL: str | None = None
 
     @property
     def database_url(self) -> URL:
-        # URL.create safely handles special characters in credentials.
+        if self.DATABASE_URL:
+            return make_url(self.DATABASE_URL)
         return URL.create(
-            "postgresql+asyncpg",
-            username=self.postgres_user,
-            password=self.postgres_password.get_secret_value(),
-            host=self.postgres_host,
-            port=self.postgres_port,
-            database=self.postgres_db,
+            drivername="postgresql+asyncpg",
+            username=self.POSTGRES_USER,
+            password=self.POSTGRES_PASSWORD,
+            host=self.POSTGRES_HOST,
+            port=self.POSTGRES_PORT,
+            database=self.POSTGRES_DB,
         )
+
+    @property
+    def redis_url(self) -> RedisURL:
+        if self.REDIS_URL:
+            return RedisURL(self.REDIS_URL)
+
+        url = f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+        return RedisURL(url)
 
 
 @lru_cache
