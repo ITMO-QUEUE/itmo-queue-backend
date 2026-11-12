@@ -4,10 +4,19 @@ import pytest
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
+from itmo_queue.api.deps import get_current_admin
 from itmo_queue.main import app
 
 BASE_URL = "http://test/api/v1"
-ADMIN_HEADERS = {"x-admin-token": "super_secret_admin_token"}
+ADMIN_HEADERS = {}
+
+
+@pytest.fixture(autouse=True)
+def admin_override(request):
+    if request.node.name != "test_create_student_no_rights":
+        app.dependency_overrides[get_current_admin] = lambda: True
+    yield
+    app.dependency_overrides.clear()
 
 
 @pytest.mark.asyncio
@@ -40,7 +49,7 @@ async def test_create_and_get_student():
 
 @pytest.mark.asyncio
 async def test_create_student_no_rights():
-    """Проверка, что без токена возвращается 403"""
+    """Запрос без сессии отклоняется."""
     async with LifespanManager(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -53,7 +62,7 @@ async def test_create_student_no_rights():
                     "password": "password123",
                 },
             )
-            assert response.status_code == 403
+            assert response.status_code == 401
 
 
 @pytest.mark.asyncio
