@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from itmo_queue.db.base import Base
+from itmo_queue.db.models.user import User as User
 
 
 class UserRole(enum.StrEnum):
@@ -57,25 +58,6 @@ class SwapStatus(enum.StrEnum):
     declined = "declined"
     cancelled = "cancelled"
     expired = "expired"
-
-
-class User(Base):
-    __tablename__ = "users"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    login: Mapped[str] = mapped_column(Text, unique=True)
-    password_hash: Mapped[str] = mapped_column(Text)
-    full_name: Mapped[str] = mapped_column(Text)
-    role: Mapped[UserRole] = mapped_column(Enum(UserRole, name="user_role"))
-    can_create_queues: Mapped[bool] = mapped_column(Boolean)
-    status: Mapped[UserStatus] = mapped_column(Enum(UserStatus, name="user_status"))
-    stream_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("streams.id")
-    )
-    external_id: Mapped[str | None] = mapped_column(Text)
-    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Stream(Base):
