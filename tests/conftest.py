@@ -44,6 +44,7 @@ async def student_client(db_session: AsyncSession):
 
     app.dependency_overrides.clear()
 
+
 @pytest.fixture
 async def setup_queue(db_session, student_client):
     """Вспомогательная фикстура для создания очереди и работы (доступна всем тестам)."""
