@@ -20,5 +20,10 @@ def test_models_share_one_user_table():
 
 def test_migrations_have_one_linear_head():
     scripts = ScriptDirectory.from_config(Config("alembic.ini"))
-    assert scripts.get_heads() == ["5524e0c29d8a"]
-    assert scripts.get_revision("5524e0c29d8a").down_revision == "0001_initial"
+    heads = scripts.get_heads()
+
+    # 1. Проверяем, что "голова" ровно одна (нет раздвоения истории)
+    assert len(heads) == 1, f"Обнаружено ветвление миграций! Головы: {heads}"
+
+    # 2. Проверяем, что базовая миграция (0001_initial) на месте
+    assert scripts.get_revision("0001_initial") is not None

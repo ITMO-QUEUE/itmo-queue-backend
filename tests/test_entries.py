@@ -161,7 +161,7 @@ async def test_reserve_logic(student_client, setup_queue, db_session):
     await db_session.commit()
 
     # 5. Проверяем, что второй студент автоматически перешел в основной состав
-    get_res = await client.get(
+    await client.get(
         f"{BASE_URL}/queues/{queue.id}/entries"
     )  # Если у вас нет GET, можно проверить через POST, но лучше просто через БД
 

@@ -1,6 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
@@ -21,6 +22,9 @@ from itmo_queue.models import (
 
 router = APIRouter(prefix="/queues/{queue_id}/entries", tags=["entries"])
 
+SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
+CurrentUser = Annotated[User, Depends(get_current_user)]
+
 
 @router.post(
     "",
@@ -37,8 +41,8 @@ router = APIRouter(prefix="/queues/{queue_id}/entries", tags=["entries"])
 async def enroll_student(
     queue_id: uuid.UUID,
     payload: EntryCreate,
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db_session),
+    session: SessionDep,
+    current_user: CurrentUser,
 ):
     if current_user.role != "student":
         raise HTTPException(status_code=403, detail="Only students can enroll")
@@ -133,8 +137,8 @@ async def enroll_student(
 async def cancel_entry(
     queue_id: uuid.UUID,
     entry_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db_session),
+    session: SessionDep,
+    current_user: CurrentUser,
 ):
     async with session.begin():
         queue = await session.get(Queue, queue_id, with_for_update=True)
@@ -164,3 +168,91 @@ async def cancel_entry(
         entry.status = EntryStatus.cancelled
         entry.closed_at = datetime.now(UTC)
         entry.updated_at = datetime.now(UTC)
+
+
+@router.post(
+    "/{entry_id}/move-to-end",
+    response_model=EntryRead,
+    operation_id="moveEntryToEnd",
+    responses={
+        403: {"description": "Cannot move Top-3, called, or in-defense entries"},
+        404: {"description": "Entry not found"},
+        400: {"description": "You have already moved this entry"},
+    },
+)
+async def move_entry_to_end(
+    queue_id: uuid.UUID,
+    entry_id: uuid.UUID,
+    session: SessionDep,  # <-- ИЗМЕНЕНО
+    current_user: CurrentUser,
+):
+    async with session.begin():
+        queue = await session.get(Queue, queue_id, with_for_update=True)
+        if not queue:
+            raise HTTPException(status_code=404, detail="Queue not found")
+
+        # Блокируем запись
+        entry = await session.scalar(
+            select(QueueEntry)
+            .where(QueueEntry.id == entry_id, QueueEntry.queue_id == queue_id)
+            .with_for_update()
+        )
+
+        if not entry:
+            raise HTTPException(status_code=404, detail="Entry not found")
+
+        if entry.student_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Cannot move someone else's entry")
+
+        if entry.status != EntryStatus.waiting:
+            raise HTTPException(status_code=403, detail="Can only move waiting entries")
+
+        if entry.self_moves_count >= 1:
+            raise HTTPException(status_code=400, detail="You have already moved this entry once")
+
+        # Проверяем Топ-3
+        top_3 = await session.scalars(
+            select(QueueEntry.id)
+            .where(QueueEntry.queue_id == queue_id, QueueEntry.status == EntryStatus.waiting)
+            .order_by(QueueEntry.sort_key)
+            .limit(3)
+        )
+        if entry.id in top_3.all():
+            raise HTTPException(status_code=403, detail="Cannot move Top-3 entries")
+
+        # Переносим в конец
+        max_sort = await session.scalar(
+            select(func.max(QueueEntry.sort_key)).where(QueueEntry.queue_id == queue_id)
+        )
+        entry.sort_key = (max_sort or Decimal(0)) + Decimal(1)
+        entry.self_moves_count += 1
+        entry.updated_at = datetime.now(UTC)
+
+        await session.flush()
+
+        # (Возвращаем обновленную запись - логика подсчета позиции как в POST)
+        ahead_count = await session.scalar(
+            select(func.count()).where(
+                QueueEntry.queue_id == queue_id,
+                QueueEntry.status.in_(
+                    [EntryStatus.waiting, EntryStatus.called, EntryStatus.in_defense]
+                ),
+                QueueEntry.sort_key < entry.sort_key,
+            )
+        )
+        position = (ahead_count or 0) + 1
+        quota = queue.quota or 0
+
+        # Достаем work_id и artifact_url для ответа
+        entry_work = await session.scalar(select(EntryWork).where(EntryWork.entry_id == entry.id))
+
+        return EntryRead(
+            id=entry.id,
+            student_id=entry.student_id,
+            queue_id=entry.queue_id,
+            status=entry.status.value,
+            position=position,
+            is_reserve=position > quota,
+            work_id=entry_work.work_id,
+            artifact_url=entry_work.artifact_url,
+        )
