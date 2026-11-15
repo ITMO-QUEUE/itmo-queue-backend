@@ -1,15 +1,8 @@
 from fastapi import APIRouter
 
-# Импортируем наши роутеры
-from itmo_queue.api.v1 import auth, groups, sessions, students
+from itmo_queue.api.v1 import auth, entries, groups, sessions, students, swaps
 
-# Создаем главный роутер с префиксом /api/v1
 api_router = APIRouter(prefix="/api/v1")
-api_router.include_router(auth.router)
-
-# Подключаем роутеры групп и студентов
-api_router.include_router(groups.router)
-api_router.include_router(students.router)
-api_router.include_router(sessions.router)
-
-# Register future module routers here with include_router(..., tags=[...]).
+for router in (auth.router, groups.router, students.router, sessions.router,
+               entries.router, swaps.router):
+    api_router.include_router(router)
