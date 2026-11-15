@@ -104,8 +104,9 @@ async def test_swap_and_double_accept(student_client, setup_queue, db_session):
     accept_res = await client.post(f"{BASE_URL}/queues/{queue.id}/swaps/{swap_id}/accept")
     assert accept_res.status_code == 200
 
-    # Пытаемся принять ЕЩЕ РАЗ (должен быть 404, так как статус уже accepted)
+    # Повторное принятие возвращает сохранённый результат без второго обмена.
     accept_res2 = await client.post(f"{BASE_URL}/queues/{queue.id}/swaps/{swap_id}/accept")
-    assert accept_res2.status_code == 404
+    assert accept_res2.status_code == 200
+    assert accept_res2.json()["status"] == "accepted"
 
     app.dependency_overrides.clear()

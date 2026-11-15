@@ -25,7 +25,21 @@ services:
       timeout: 3s
       retries: 10
 
+  migrate:
+    image: itmo-queue-backend:local
+    build: .
+    profiles: ["app"]
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   backend:
+    image: itmo-queue-backend:local
     build: .
     profiles: ["app"]
     env_file: .env
@@ -40,6 +54,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   postgres_data:

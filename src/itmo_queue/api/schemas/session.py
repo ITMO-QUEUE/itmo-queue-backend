@@ -20,8 +20,10 @@ class SessionCreate(BaseModel):
     planned_start: AwareDatetime
     planned_end: AwareDatetime
     location: str | None = Field(default=None, max_length=2000)
-    avg_duration_min: int | None = Field(default=None, ge=1)
+    avg_duration_min: int | None = Field(default=10, ge=1)
     quota: int | None = Field(default=None, ge=1)
+    stream_ids: list[uuid.UUID] = Field(default_factory=list)
+    registration_open: bool = True
     teacher_ids: list[uuid.UUID] = Field(min_length=1)
     works: list[SessionWork] = Field(min_length=1)
 
@@ -29,6 +31,8 @@ class SessionCreate(BaseModel):
     def validate_session(self):
         if self.planned_end <= self.planned_start:
             raise ValueError("planned_end must be after planned_start")
+        if len(set(self.stream_ids)) != len(self.stream_ids):
+            raise ValueError("stream_ids must be unique")
         if len(set(self.teacher_ids)) != len(self.teacher_ids):
             raise ValueError("teacher_ids must be unique")
         if len({work.work_id for work in self.works}) != len(self.works):
@@ -46,6 +50,10 @@ class SessionUpdate(BaseModel):
     location: str | None = Field(default=None, max_length=2000)
     avg_duration_min: int | None = Field(default=None, ge=1)
     quota: int | None = Field(default=None, ge=1)
+    stream_ids: list[uuid.UUID] | None = None
+    registration_open: bool | None = None
+    stage: QueueStage | None = None
+    finish_reason: str | None = Field(default=None, min_length=1, max_length=2000)
     teacher_ids: list[uuid.UUID] | None = Field(default=None, min_length=1)
     works: list[SessionWork] | None = Field(default=None, min_length=1)
 
@@ -56,9 +64,12 @@ class SessionUpdate(BaseModel):
             "location",
             "avg_duration_min",
             "quota",
+            "finish_reason",
         }:
             if getattr(self, field) is None:
                 raise ValueError(f"{field} cannot be null")
+        if self.stream_ids is not None and len(set(self.stream_ids)) != len(self.stream_ids):
+            raise ValueError("stream_ids must be unique")
         if self.teacher_ids and len(set(self.teacher_ids)) != len(self.teacher_ids):
             raise ValueError("teacher_ids must be unique")
         if self.works and len({w.work_id for w in self.works}) != len(self.works):
@@ -80,6 +91,12 @@ class SessionRead(BaseModel):
     quota: int | None
     stage: QueueStage
     registration_open: bool
+    created_at: datetime
+    updated_at: datetime
+    activated_at: datetime | None
+    finished_at: datetime | None
+    version: int
+    stream_ids: list[uuid.UUID]
     teacher_ids: list[uuid.UUID]
     works: list[SessionWork]
 
@@ -104,7 +121,11 @@ class WorkOption(BaseModel):
     position_no: int
 
 
+class TeacherOption(Option):
+    discipline_ids: list[uuid.UUID]
+
+
 class SessionOptions(BaseModel):
     disciplines: list[Option]
-    teachers: list[Option]
+    teachers: list[TeacherOption]
     works: list[WorkOption]

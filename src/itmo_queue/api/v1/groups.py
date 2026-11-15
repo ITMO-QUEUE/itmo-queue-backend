@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from itmo_queue.api.deps import get_current_admin
 from itmo_queue.api.schemas.group import (
     GroupCreate,
     GroupList,
@@ -15,7 +16,7 @@ from itmo_queue.api.schemas.group import (
 from itmo_queue.db.models.group import Group
 from itmo_queue.db.session import get_db_session
 
-router = APIRouter(prefix="/groups", tags=["groups"])
+router = APIRouter(prefix="/groups", tags=["groups"], dependencies=[Depends(get_current_admin)])
 
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 

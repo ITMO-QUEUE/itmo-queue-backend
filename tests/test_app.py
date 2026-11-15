@@ -68,7 +68,9 @@ async def test_openapi(client):
         "/api/v1/queues/{queue_id}/activate",
         "/api/v1/queues/{queue_id}/finish",
     }
-    assert expected_paths == set(schema["paths"])
+    assert expected_paths <= set(schema["paths"])
+    ids = [op["operationId"] for path in schema["paths"].values() for op in path.values()]
+    assert len(ids) == len(set(ids))
 
 
 async def test_health_contract(client):

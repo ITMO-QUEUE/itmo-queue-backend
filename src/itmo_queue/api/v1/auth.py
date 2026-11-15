@@ -31,7 +31,13 @@ class CurrentUser(BaseModel):
     role: str
 
 
-@router.post("/login", response_model=CurrentUser, operation_id="login")
+@router.post(
+    "/login",
+    response_model=CurrentUser,
+    operation_id="login",
+    openapi_extra={"security": []},
+    summary="Войти по логину или ИСУ и паролю",
+)
 async def login(
     payload: LoginRequest,
     request: Request,
@@ -41,6 +47,8 @@ async def login(
     old_token: Annotated[str | None, Depends(cookie_scheme)],
 ):
     user = await db.scalar(select(User).where(User.login == payload.login))
+    if user is None and len(payload.login) == 6 and payload.login.isdecimal():
+        user = await db.scalar(select(User).where(User.isu == payload.login))
     if (
         not user
         or not user.is_active

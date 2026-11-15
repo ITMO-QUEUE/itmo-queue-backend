@@ -11,14 +11,22 @@ class StudentBase(BaseModel):
 
 
 class StudentCreate(StudentBase):
-    password: str = Field(..., min_length=6, description="Пароль (будет захеширован)")
+    password: str = Field(
+        ...,
+        min_length=6,
+        max_length=1024,
+        description="Пароль (будет захеширован)",
+        json_schema_extra={"writeOnly": True},
+    )
 
 
 class StudentUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     login: str | None = Field(None, min_length=3, max_length=100)
     isu: str | None = Field(None, min_length=1, max_length=50)
-    password: str | None = Field(None, min_length=6)
+    password: str | None = Field(
+        None, min_length=6, max_length=1024, json_schema_extra={"writeOnly": True}
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -31,6 +39,7 @@ class StudentUpdate(BaseModel):
 
 
 class StudentRead(StudentBase):
+    isu: str | None = None
     id: uuid.UUID
     role: str
     is_active: bool

@@ -7,6 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from itmo_queue.api.deps import get_current_user
+from itmo_queue.api.schemas.queue import Reason
 from itmo_queue.api.schemas.session import (
     ErrorResponse,
     RegistrationUpdate,
@@ -21,13 +22,18 @@ from itmo_queue.models import (
     Attempt,
     AttemptStatus,
     Discipline,
+    EntryStatus,
     Queue,
     QueueEntry,
     QueueStage,
+    QueueStream,
     QueueTeacher,
     QueueWork,
+    Stream,
+    TeacherDiscipline,
     Work,
 )
+from itmo_queue.services import queue as svc
 
 router = APIRouter(
     tags=["sessions"],
@@ -45,18 +51,12 @@ QueueID = Annotated[uuid.UUID, Path(description="Defense session UUID")]
 
 
 def require_teacher(user: User):
-    if not user.is_active or user.role != "teacher":
+    if not user.is_active or user.role not in ("teacher", "admin"):
         raise HTTPException(403, "Teacher access required")
 
 
 async def assigned_session(queue_id: uuid.UUID, db: AsyncSession, actor: User) -> Queue:
-    require_teacher(actor)
-    queue = await db.scalar(select(Queue).where(Queue.id == queue_id).with_for_update())
-    if not queue:
-        raise HTTPException(404, "Session not found")
-    if not await db.get(QueueTeacher, (queue_id, actor.id)):
-        raise HTTPException(403, "Not assigned to this session")
-    return queue
+    return await svc.get_queue(db, queue_id, actor, lock=True, manage=True)
 
 
 async def validate_references(db: AsyncSession, discipline_id, teacher_ids, works):
@@ -71,6 +71,16 @@ async def validate_references(db: AsyncSession, discipline_id, teacher_ids, work
     )
     if teachers != set(teacher_ids):
         raise HTTPException(422, "Teachers must exist and be active")
+    allowed_teachers = set(
+        await db.scalars(
+            select(TeacherDiscipline.teacher_id).where(
+                TeacherDiscipline.discipline_id == discipline_id,
+                TeacherDiscipline.teacher_id.in_(teacher_ids),
+            )
+        )
+    )
+    if allowed_teachers != set(teacher_ids):
+        raise HTTPException(422, "Teachers must be assigned to the discipline")
     valid_works = set(
         await db.scalars(
             select(Work.id).where(
@@ -102,10 +112,17 @@ async def response_for(queue: Queue, db: AsyncSession) -> SessionRead:
     values = {
         field: getattr(queue, field)
         for field in SessionRead.model_fields
-        if field not in {"teacher_ids", "works"}
+        if field not in {"teacher_ids", "works", "stream_ids"}
     }
     return SessionRead(
         **values,
+        stream_ids=list(
+            await db.scalars(
+                select(QueueStream.stream_id)
+                .where(QueueStream.queue_id == queue.id)
+                .order_by(QueueStream.stream_id)
+            )
+        ),
         teacher_ids=teachers,
         works=[{"work_id": w.work_id, "priority": w.priority} for w in works],
     )
@@ -119,7 +136,16 @@ async def response_for(queue: Queue, db: AsyncSession) -> SessionRead:
 )
 async def session_options(db: DB, actor: Actor):
     require_teacher(actor)
-    disciplines = await db.scalars(select(Discipline).order_by(Discipline.name))
+    choices = select(Discipline)
+    if actor.role == "teacher":
+        choices = choices.where(
+            Discipline.id.in_(
+                select(TeacherDiscipline.discipline_id).where(
+                    TeacherDiscipline.teacher_id == actor.id
+                )
+            )
+        )
+    disciplines = await db.scalars(choices.order_by(Discipline.name))
     teachers = await db.scalars(
         select(User).where(User.role == "teacher", User.is_active.is_(True)).order_by(User.name)
     )
@@ -130,7 +156,20 @@ async def session_options(db: DB, actor: Actor):
     )
     return {
         "disciplines": [{"id": d.id, "name": d.name} for d in disciplines],
-        "teachers": [{"id": t.id, "name": t.name} for t in teachers],
+        "teachers": [
+            {
+                "id": t.id,
+                "name": t.name,
+                "discipline_ids": list(
+                    await db.scalars(
+                        select(TeacherDiscipline.discipline_id).where(
+                            TeacherDiscipline.teacher_id == t.id
+                        )
+                    )
+                ),
+            }
+            for t in teachers
+        ],
         "works": [
             {
                 "id": w.id,
@@ -150,21 +189,38 @@ async def session_options(db: DB, actor: Actor):
     operation_id="createSession",
     summary="Create a preliminary session",
     description=(
-        "Creator needs can_create_queues and is always assigned. Registration opens immediately."
+        "Teachers need creation permission for the discipline; admins may create any session."
     ),
 )
 async def create_session(payload: SessionCreate, db: DB, actor: Actor):
     require_teacher(actor)
-    if not actor.can_create_queues:
+    if actor.role != "admin" and not actor.can_create_queues:
         raise HTTPException(403, "Session creation is not allowed")
-    teachers = list(set(payload.teacher_ids) | {actor.id})
+    teachers = list(set(payload.teacher_ids) | ({actor.id} if actor.role == "teacher" else set()))
+    if actor.role != "admin" and not await db.get(
+        TeacherDiscipline, (actor.id, payload.discipline_id)
+    ):
+        raise HTTPException(403, "No creation permission for this discipline")
+    if set(payload.stream_ids) != set(
+        await db.scalars(select(Stream.id).where(Stream.id.in_(payload.stream_ids)))
+    ):
+        raise HTTPException(422, "Unknown stream")
     await validate_references(db, payload.discipline_id, teachers, payload.works)
     now = datetime.now(UTC)
     queue = Queue(
-        **payload.model_dump(exclude={"teacher_ids", "works"}),
+        **payload.model_dump(
+            exclude={
+                "teacher_ids",
+                "works",
+                "stream_ids",
+                "registration_open",
+                "stage",
+                "finish_reason",
+            }
+        ),
         created_by=actor.id,
         stage=QueueStage.preliminary,
-        registration_open=True,
+        registration_open=payload.registration_open,
         version=1,
         created_at=now,
         updated_at=now,
@@ -173,6 +229,8 @@ async def create_session(payload: SessionCreate, db: DB, actor: Actor):
     await db.flush()
     db.add_all([QueueTeacher(queue_id=queue.id, teacher_id=t, assigned_at=now) for t in teachers])
     db.add_all([QueueWork(queue_id=queue.id, **w.model_dump()) for w in payload.works])
+    db.add_all([QueueStream(queue_id=queue.id, stream_id=s) for s in payload.stream_ids])
+    await svc.event(db, queue, actor, "queue.status_changed")
     await db.flush()
     response = await response_for(queue, db)
     await db.commit()
@@ -193,7 +251,17 @@ async def update_session(queue_id: QueueID, payload: SessionUpdate, db: DB, acto
     queue = await assigned_session(queue_id, db, actor)
     if queue.stage == QueueStage.finished:
         raise HTTPException(409, "Session is finished")
-    values = payload.model_dump(exclude_unset=True, exclude={"teacher_ids", "works"})
+    values = payload.model_dump(
+        exclude_unset=True,
+        exclude={
+            "teacher_ids",
+            "works",
+            "stream_ids",
+            "registration_open",
+            "stage",
+            "finish_reason",
+        },
+    )
     start = values.get("planned_start", queue.planned_start)
     end = values.get("planned_end", queue.planned_end)
     if end <= start:
@@ -238,10 +306,44 @@ async def update_session(queue_id: QueueID, payload: SessionUpdate, db: DB, acto
                 for t in teachers
             ]
         )
+    if payload.stream_ids is not None:
+        if set(payload.stream_ids) != set(
+            await db.scalars(select(Stream.id).where(Stream.id.in_(payload.stream_ids)))
+        ):
+            raise HTTPException(422, "Unknown stream")
+        previous_streams = set(
+            await db.scalars(select(QueueStream.stream_id).where(QueueStream.queue_id == queue.id))
+        )
+        restrictions_changed = (
+            set(payload.stream_ids) != previous_streams
+            and payload.stream_ids
+            and (not previous_streams or not set(payload.stream_ids).issuperset(previous_streams))
+        )
+        if restrictions_changed and await db.scalar(
+            select(QueueEntry.id).where(QueueEntry.queue_id == queue.id).limit(1)
+        ):
+            raise HTTPException(409, "Cannot restrict streams after registration")
+        await db.execute(delete(QueueStream).where(QueueStream.queue_id == queue.id))
+        db.add_all([QueueStream(queue_id=queue.id, stream_id=s) for s in payload.stream_ids])
+    if payload.stage is not None and payload.stage != queue.stage:
+        if payload.stage == QueueStage.active and queue.stage == QueueStage.preliminary:
+            queue.stage, queue.activated_at = QueueStage.active, datetime.now(UTC)
+        elif payload.stage != QueueStage.finished:
+            raise HTTPException(409, "Session stages cannot go back")
+    if payload.registration_open is not None:
+        queue.registration_open = payload.registration_open
     for key, value in values.items():
         setattr(queue, key, value)
     queue.updated_at = datetime.now(UTC)
-    await db.flush()
+    if payload.stage == QueueStage.finished:
+        await db.flush()
+        return await finish(
+            queue_id,
+            db,
+            actor,
+            Reason(reason=payload.finish_reason) if payload.finish_reason else None,
+        )
+    await svc.event(db, queue, actor, "queue.status_changed")
     response = await response_for(queue, db)
     await db.commit()
     return response
@@ -258,6 +360,7 @@ async def registration(queue_id: QueueID, payload: RegistrationUpdate, db: DB, a
     if queue.stage == QueueStage.finished:
         raise HTTPException(409, "Session is finished")
     queue.registration_open = payload.open
+    await svc.event(db, queue, actor, "queue.status_changed")
     queue.updated_at = datetime.now(UTC)
     response = await response_for(queue, db)
     await db.commit()
@@ -272,10 +375,13 @@ async def registration(queue_id: QueueID, payload: RegistrationUpdate, db: DB, a
 )
 async def activate(queue_id: QueueID, db: DB, actor: Actor):
     queue = await assigned_session(queue_id, db, actor)
+    if queue.stage == QueueStage.active:
+        return await response_for(queue, db)
     if queue.stage != QueueStage.preliminary:
         raise HTTPException(409, "Only preliminary sessions can be activated")
     queue.stage = QueueStage.active
     queue.activated_at = queue.updated_at = datetime.now(UTC)
+    await svc.event(db, queue, actor, "queue.status_changed")
     response = await response_for(queue, db)
     await db.commit()
     return response
@@ -287,10 +393,10 @@ async def activate(queue_id: QueueID, db: DB, actor: Actor):
     operation_id="finishSession",
     summary="Manually finish the defense session",
 )
-async def finish(queue_id: QueueID, db: DB, actor: Actor):
+async def finish(queue_id: QueueID, db: DB, actor: Actor, payload: Reason | None = None):
     queue = await assigned_session(queue_id, db, actor)
-    if queue.stage != QueueStage.active:
-        raise HTTPException(409, "Only active sessions can be finished")
+    if queue.stage == QueueStage.finished:
+        return await response_for(queue, db)
     busy = await db.scalar(
         select(Attempt.id)
         .join(QueueEntry, Attempt.entry_id == QueueEntry.id)
@@ -302,9 +408,24 @@ async def finish(queue_id: QueueID, db: DB, actor: Actor):
     )
     if busy:
         raise HTTPException(409, "Complete the current attempts first")
+    if queue.stage != QueueStage.active:
+        raise HTTPException(409, "Only active sessions can be finished")
+    remaining = await svc.entries(db, queue_id)
+    if remaining and payload is None:
+        raise HTTPException(422, "A cancellation reason is required for remaining entries")
+    for entry in remaining:
+        entry.status, entry.closed_at = EntryStatus.cancelled, datetime.now(UTC)
+        entry.updated_at = datetime.now(UTC)
+        entry.removed_reason = payload.reason
+        entry.removed_by = actor.id
+        await svc.notify(
+            db, entry.student_id, queue_id, "session.finished", {"reason": payload.reason}
+        )
+    await svc.invalidate_swaps(db, queue_id)
     queue.stage = QueueStage.finished
     queue.registration_open = False
     queue.finished_at = queue.updated_at = datetime.now(UTC)
+    await svc.event(db, queue, actor, "queue.status_changed")
     response = await response_for(queue, db)
     await db.commit()
     return response
