@@ -54,6 +54,9 @@ async def test_openapi(client):
     # Проверяем, что все наши новые маршруты появились в схеме
     expected_paths = {
         "/health",
+        "/api/v1/auth/login",
+        "/api/v1/auth/logout",
+        "/api/v1/auth/me",
         "/api/v1/groups",
         "/api/v1/groups/{group_id}",
         "/api/v1/students",
