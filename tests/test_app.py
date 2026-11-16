@@ -65,8 +65,14 @@ async def test_openapi(client):
         "/api/v1/queues/{queue_id}/swaps/{swap_id}/accept",
         "/api/v1/queues/{queue_id}/swaps/{swap_id}/decline",
         "/api/v1/queues/{queue_id}/swaps/{swap_id}/cancel",
+        "/api/v1/session-options",
+        "/api/v1/queues",
+        "/api/v1/queues/{queue_id}",
+        "/api/v1/queues/{queue_id}/registration",
+        "/api/v1/queues/{queue_id}/activate",
+        "/api/v1/queues/{queue_id}/finish",
     }
-    assert set(schema["paths"]) == expected_paths
+    assert expected_paths == set(schema["paths"])
 
 
 async def test_health_contract(client):
