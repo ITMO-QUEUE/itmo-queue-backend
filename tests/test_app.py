@@ -54,13 +54,17 @@ async def test_openapi(client):
     # Проверяем, что все наши новые маршруты появились в схеме
     expected_paths = {
         "/health",
-        "/api/v1/auth/login",
-        "/api/v1/auth/logout",
-        "/api/v1/auth/me",
         "/api/v1/groups",
         "/api/v1/groups/{group_id}",
         "/api/v1/students",
         "/api/v1/students/{student_id}",
+        "/api/v1/queues/{queue_id}/entries",
+        "/api/v1/queues/{queue_id}/entries/{entry_id}",
+        "/api/v1/queues/{queue_id}/entries/{entry_id}/move-to-end",
+        "/api/v1/queues/{queue_id}/swaps",
+        "/api/v1/queues/{queue_id}/swaps/{swap_id}/accept",
+        "/api/v1/queues/{queue_id}/swaps/{swap_id}/decline",
+        "/api/v1/queues/{queue_id}/swaps/{swap_id}/cancel",
     }
     assert set(schema["paths"]) == expected_paths
 
