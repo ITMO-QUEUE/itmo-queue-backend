@@ -1,6 +1,7 @@
 from functools import lru_cache
 from urllib.parse import urlparse
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
 
@@ -27,7 +28,8 @@ class Settings(BaseSettings):
     environment: str = "development"
     log_level: str = "INFO"
 
-    ADMIN_TOKEN: str = "super_secret_admin_token"
+    SESSION_TTL_SECONDS: int = Field(default=86400, gt=0)
+    SESSION_COOKIE_SECURE: bool = True
 
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
