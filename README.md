@@ -1,7 +1,8 @@
 ﻿# ITMO.Queue backend
 
-Минимальная инфраструктурная основа модульного монолита: FastAPI, PostgreSQL,
-SQLAlchemy 2.x, Alembic и Redis. Бизнес-модули пока не реализованы.
+Backend ITMO.Queue: учётные записи, сеансы защиты, запись на работы, управление
+живой очередью, результаты и история, SSE и WebSocket. FastAPI, PostgreSQL, Redis.
+Контракты и примеры: [docs/openapi.md](docs/openapi.md).
 
 ## Требования
 
@@ -55,6 +56,8 @@ Copy-Item .env.example .env
 
 ```sh
 docker compose up -d --wait postgres redis
+python -m alembic upgrade head
+python -m itmo_queue.bootstrap
 python -m uvicorn itmo_queue.main:app --reload
 ```
 
@@ -74,8 +77,15 @@ Swagger UI и ReDoc загружают свои стандартные ресу�
 
 ```sh
 docker compose --profile app up -d --build --wait
+docker compose exec backend python -m itmo_queue.bootstrap
 docker compose logs -f backend
 ```
+
+Сервис migrate применяет миграции перед запуском backend. bootstrap создаёт первого
+администратора интерактивно и не перезаписывает существующего. Затем через
+`/auth/register` создайте пользователей, через `/disciplines`, `/works`, `/streams` —
+справочники; через PATCH `/users/{id}` назначьте преподавателям discipline_ids и
+can_create_queues. После этого преподаватель может создать сеанс и открыть запись.
 
 API доступен на порту 8000. В контейнере адреса PostgreSQL и Redis автоматически
 заменяются на имена сервисов; локальный `.env` сохраняет `localhost`.
@@ -104,10 +114,11 @@ python -m alembic upgrade head --sql
 docker compose --env-file .env.example config --quiet
 ```
 
-Тесты используют HTTPX AsyncClient с ASGITransport и проверяют приложение,
-конфигурацию, схему и CRUD студентов. Для CRUD-тестов необходим работающий
-PostgreSQL с применёнными миграциями; Redis для этих тестов не требуется.
-GitHub Actions поднимает PostgreSQL и применяет миграции перед тестами.
+Тесты требуют PostgreSQL с применёнными миграциями и Redis. Интеграционные проверки
+используют реальные cookie-сессии, параллельные HTTP-запросы, SSE и WebSocket через
+Uvicorn. Запускайте их на отдельной тестовой базе: тесты создают данные.
+GitHub Actions поднимает оба сервиса, применяет миграции, запускает Ruff, pytest и
+alembic check. Проверка liveness не требует доступных зависимостей.
 
 ## Сессионная авторизация
 
@@ -164,7 +175,8 @@ python -m alembic current
 docker compose exec backend python -m alembic upgrade head
 ```
 
-Миграции выполняются явно, а не при старте приложения. Команда `upgrade head`
+При запуске через Compose миграции выполняет отдельный сервис migrate. При
+локальном запуске Python выполните `upgrade head` самостоятельно. Команда
 применяет имеющиеся ревизии. Автогенерацию всегда нужно просматривать перед применением.
 
 ## Подключение модулей
@@ -187,10 +199,10 @@ docker compose exec backend python -m alembic upgrade head
 
 Получайте сессию через `Depends(get_db_session)`. Зависимость выделяет сессию
 на запрос и закрывает её; незавершённая транзакция откатывается.
-Границы записи задавайте явно через `async with session.begin():` — успешный выход
-фиксирует транзакцию, исключение откатывает её. Автоматического commit после
-ответа HTTP нет. Redis-клиент через `Depends(get_redis)` общий для приложения;
+Авторизация уже может начать транзакцию чтением пользователя. В обработчике
+выполняйте flush/commit явно; повторный begin в этой сессии приведёт к ошибке.
+При исключении закрытие сессии откатывает незавершённые изменения. Redis-клиент через `Depends(get_redis)` общий для приложения;
 его закрывает lifespan, обработчики закрывать клиент не должны.
 
-PostgreSQL — источник истины. ITMO.ID, учебные сущности, очереди,
-SSE, уведомления и TypeScript SDK остаются отдельными задачами команды.
+PostgreSQL — источник истины для очередей, истории, событий и уведомлений.
+Redis хранит сессии входа. ITMO.ID и клиентский TypeScript SDK не входят в MVP.

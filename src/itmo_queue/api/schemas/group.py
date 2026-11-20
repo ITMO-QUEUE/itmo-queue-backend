@@ -11,7 +11,7 @@ class GroupCreate(BaseModel):
 
 # Схема для обновления (PATCH) - клиент может изменить имя
 class GroupUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
+    name: str = Field(..., min_length=1, max_length=255)
 
 
 # Схема для ответа (GET) - сервер отдает все данные, включая даты

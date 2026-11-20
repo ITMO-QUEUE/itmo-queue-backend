@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     environment: str = "development"
     log_level: str = "INFO"
 
+    cors_origins: list[str] = []
+
     SESSION_TTL_SECONDS: int = Field(default=86400, gt=0)
     SESSION_COOKIE_SECURE: bool = True
 

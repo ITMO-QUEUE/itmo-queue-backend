@@ -11,7 +11,7 @@ from itmo_queue.core.redis import get_redis
 from itmo_queue.db.models.user import User
 from itmo_queue.db.session import get_db_session
 
-SESSION_COOKIE = "itmo_session"
+SESSION_COOKIE = "sessionId"
 cookie_scheme = APIKeyCookie(name=SESSION_COOKIE, auto_error=False)
 
 

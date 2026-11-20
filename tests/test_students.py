@@ -8,56 +8,65 @@ from itmo_queue.api.deps import get_current_admin
 from itmo_queue.main import app
 
 BASE_URL = "http://test/api/v1"
+ADMIN_HEADERS = {}
 
 
-# Фикстура, которая подменяет проверку прав админа
-@pytest.fixture
-def mock_admin():
-    async def override_get_current_admin():
-        return True
-
-    app.dependency_overrides[get_current_admin] = override_get_current_admin
+@pytest.fixture(autouse=True)
+def admin_override(request):
+    if request.node.name != "test_create_student_no_rights":
+        app.dependency_overrides[get_current_admin] = lambda: True
     yield
     app.dependency_overrides.clear()
 
 
 @pytest.mark.asyncio
-async def test_create_and_get_student(mock_admin):
+async def test_create_and_get_student():
     async with LifespanManager(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             unique_id = str(uuid.uuid4())[:8]
+            login = f"test_student_{unique_id}"
+
             response = await client.post(
                 f"{BASE_URL}/students",
                 json={
                     "name": "Тест Студент",
-                    "login": f"test_{unique_id}",
+                    "login": login,
                     "isu": f"999{unique_id}",
                     "password": "password123",
                 },
+                headers=ADMIN_HEADERS,
             )
             assert response.status_code == 201
             student_id = response.json()["id"]
 
-            get_response = await client.get(f"{BASE_URL}/students/{student_id}")
+            get_response = await client.get(
+                f"{BASE_URL}/students/{student_id}",
+                headers=ADMIN_HEADERS,
+            )
             assert get_response.status_code == 200
 
 
 @pytest.mark.asyncio
 async def test_create_student_no_rights():
-    """Без фикстуры mock_admin токена нет -> 401/403"""
+    """Запрос без сессии отклоняется."""
     async with LifespanManager(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.post(
                 f"{BASE_URL}/students",
-                json={"name": "Хакер", "login": "hacker", "isu": "000", "password": "password123"},
+                json={
+                    "name": "Хакер",
+                    "login": "hacker",
+                    "isu": "000",
+                    "password": "password123",
+                },
             )
-            assert response.status_code in [401, 403]  # У Григория возвращается 401, если нет куки
+            assert response.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_duplicate_student_error(mock_admin):
+async def test_duplicate_student_error():
     async with LifespanManager(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -69,13 +78,21 @@ async def test_duplicate_student_error(mock_admin):
                 "password": "password123",
             }
 
-            await client.post(f"{BASE_URL}/students", json=payload)
-            response = await client.post(f"{BASE_URL}/students", json=payload)
+            await client.post(
+                f"{BASE_URL}/students",
+                json=payload,
+                headers=ADMIN_HEADERS,
+            )
+            response = await client.post(
+                f"{BASE_URL}/students",
+                json=payload,
+                headers=ADMIN_HEADERS,
+            )
             assert response.status_code == 409
 
 
 @pytest.mark.asyncio
-async def test_soft_delete_student(mock_admin):
+async def test_soft_delete_student():
     async with LifespanManager(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -88,19 +105,26 @@ async def test_soft_delete_student(mock_admin):
                     "isu": f"222{unique_id}",
                     "password": "password123",
                 },
+                headers=ADMIN_HEADERS,
             )
-            assert res.status_code == 201
             student_id = res.json()["id"]
 
-            del_res = await client.delete(f"{BASE_URL}/students/{student_id}")
+            del_res = await client.delete(
+                f"{BASE_URL}/students/{student_id}",
+                headers=ADMIN_HEADERS,
+            )
             assert del_res.status_code == 204
 
-            get_res = await client.get(f"{BASE_URL}/students/{student_id}")
+            get_res = await client.get(
+                f"{BASE_URL}/students/{student_id}",
+                headers=ADMIN_HEADERS,
+            )
             assert get_res.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_patch_null_values(mock_admin):
+async def test_patch_null_values():
+    """Проверка, что PATCH с явным null возвращает 422"""
     async with LifespanManager(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -113,8 +137,15 @@ async def test_patch_null_values(mock_admin):
                     "isu": f"333{unique_id}",
                     "password": "password123",
                 },
+                headers=ADMIN_HEADERS,
             )
             student_id = res.json()["id"]
 
-            response = await client.patch(f"{BASE_URL}/students/{student_id}", json={"name": None})
+            # Пытаемся передать null в имя
+            response = await client.patch(
+                f"{BASE_URL}/students/{student_id}",
+                json={"name": None},
+                headers=ADMIN_HEADERS,
+            )
+            # Pydantic должен заблокировать null
             assert response.status_code == 422

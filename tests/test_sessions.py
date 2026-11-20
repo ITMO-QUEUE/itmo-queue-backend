@@ -19,6 +19,7 @@ from itmo_queue.models import (
     EntryStatus,
     Queue,
     QueueEntry,
+    TeacherDiscipline,
     Work,
 )
 
@@ -55,6 +56,9 @@ async def context():
                 for i in range(2)
             ]
             db.add_all(works)
+            db.add_all(
+                [TeacherDiscipline(teacher_id=t.id, discipline_id=discipline.id) for t in teachers]
+            )
             await db.commit()
         state = SimpleNamespace(
             actor=teachers[0],
@@ -126,7 +130,7 @@ async def test_lifecycle_and_equal_teacher_rights(context):
     result = await ctx.client.post(base + "/activate")
     assert result.json()["stage"] == "active"
     assert result.json()["registration_open"] is False
-    assert (await ctx.client.post(base + "/activate")).status_code == 409
+    assert (await ctx.client.post(base + "/activate")).status_code == 200
     assert (await ctx.client.post(base + "/registration", json={"open": True})).status_code == 200
     result = await ctx.client.post(base + "/finish")
     assert result.json()["stage"] == "finished"

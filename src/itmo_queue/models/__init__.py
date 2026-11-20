@@ -5,7 +5,18 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -266,3 +277,27 @@ class Notification(Base):
     payload: Mapped[dict] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+Index(
+    "uq_current_student_entry",
+    QueueEntry.queue_id,
+    QueueEntry.student_id,
+    unique=True,
+    postgresql_where=text("status IN ('waiting', 'called', 'in_defense')"),
+)
+Index(
+    "uq_current_teacher_attempt",
+    Attempt.teacher_id,
+    unique=True,
+    postgresql_where=text("status IN ('called', 'in_progress')"),
+)
+Index(
+    "uq_current_entry_attempt",
+    Attempt.entry_id,
+    unique=True,
+    postgresql_where=text("status IN ('called', 'in_progress')"),
+)
+Index("ix_queue_events_queue_id_id", QueueEvent.queue_id, QueueEvent.id)
+Index("ix_notifications_user_created", Notification.user_id, Notification.created_at)
+Index("ix_swap_offers_queue_status", SwapOffer.queue_id, SwapOffer.status)

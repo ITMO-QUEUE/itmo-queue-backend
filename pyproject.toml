@@ -16,13 +16,12 @@ dependencies = [
     "asyncpg>=0.30,<1",
     "alembic>=1.14,<2",
     "redis>=5.2,<7",
-    "bcrypt",
-    "pytest-asyncio",
-    "asgi-lifespan",
+    "bcrypt>=4,<6",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3,<10", "httpx>=0.28,<1", "anyio>=4,<5", "ruff>=0.9,<1"]
+dev = ["pytest>=8.3,<10", "httpx>=0.28,<1", "anyio>=4,<5", "ruff>=0.9,<1",
+       "pytest-asyncio>=0.25,<2", "asgi-lifespan>=2,<3"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
