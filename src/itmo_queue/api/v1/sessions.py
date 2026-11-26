@@ -12,6 +12,7 @@ from itmo_queue.api.schemas.session import (
     ErrorResponse,
     RegistrationUpdate,
     SessionCreate,
+    SessionCreated,
     SessionOptions,
     SessionRead,
     SessionUpdate,
@@ -184,7 +185,7 @@ async def session_options(db: DB, actor: Actor):
 
 @router.post(
     "/queues",
-    response_model=SessionRead,
+    response_model=SessionCreated,
     status_code=201,
     operation_id="createSession",
     summary="Create a preliminary session",
@@ -201,23 +202,36 @@ async def create_session(payload: SessionCreate, db: DB, actor: Actor):
         TeacherDiscipline, (actor.id, payload.discipline_id)
     ):
         raise HTTPException(403, "No creation permission for this discipline")
-    if set(payload.stream_ids) != set(
-        await db.scalars(select(Stream.id).where(Stream.id.in_(payload.stream_ids)))
-    ):
-        raise HTTPException(422, "Unknown stream")
-    await validate_references(db, payload.discipline_id, teachers, payload.works)
+    await validate_references(db, payload.discipline_id, teachers, [])
     now = datetime.now(UTC)
+    stream = Stream(id=uuid.uuid4(), name=payload.title)
+    works = [
+        Work(
+            id=uuid.uuid4(),
+            discipline_id=payload.discipline_id,
+            title=work.title,
+            position_no=index,
+            is_active=True,
+        )
+        for index, work in enumerate(payload.works, start=1)
+    ]
+    db.add(stream)
+    db.add_all(works)
     queue = Queue(
         **payload.model_dump(
             exclude={
                 "teacher_ids",
                 "works",
-                "stream_ids",
+                "auditorium",
+                "onlineLink",
                 "registration_open",
                 "stage",
                 "finish_reason",
             }
         ),
+        auditorium=payload.auditorium,
+        online_link=payload.onlineLink,
+        location=payload.auditorium or payload.onlineLink,
         created_by=actor.id,
         stage=QueueStage.preliminary,
         registration_open=payload.registration_open,
@@ -228,11 +242,22 @@ async def create_session(payload: SessionCreate, db: DB, actor: Actor):
     db.add(queue)
     await db.flush()
     db.add_all([QueueTeacher(queue_id=queue.id, teacher_id=t, assigned_at=now) for t in teachers])
-    db.add_all([QueueWork(queue_id=queue.id, **w.model_dump()) for w in payload.works])
-    db.add_all([QueueStream(queue_id=queue.id, stream_id=s) for s in payload.stream_ids])
+    db.add_all(
+        [
+            QueueWork(queue_id=queue.id, work_id=w.id, priority=spec.priority)
+            for w, spec in zip(works, payload.works, strict=True)
+        ]
+    )
+    db.add(QueueStream(queue_id=queue.id, stream_id=stream.id))
     await svc.event(db, queue, actor, "queue.status_changed")
     await db.flush()
-    response = await response_for(queue, db)
+    existing = await response_for(queue, db)
+    response = SessionCreated(
+        **existing.model_dump(exclude={"location", "stream_ids"}),
+        stream_id=stream.id,
+        auditorium=queue.auditorium,
+        onlineLink=queue.online_link,
+    )
     await db.commit()
     return response
 
