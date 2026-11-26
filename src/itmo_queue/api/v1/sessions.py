@@ -150,11 +150,6 @@ async def session_options(db: DB, actor: Actor):
     teachers = await db.scalars(
         select(User).where(User.role == "teacher", User.is_active.is_(True)).order_by(User.name)
     )
-    works = await db.scalars(
-        select(Work)
-        .where(Work.is_active.is_(True))
-        .order_by(Work.discipline_id, Work.position_no, Work.id)
-    )
     return {
         "disciplines": [{"id": d.id, "name": d.name} for d in disciplines],
         "teachers": [
@@ -170,15 +165,6 @@ async def session_options(db: DB, actor: Actor):
                 ),
             }
             for t in teachers
-        ],
-        "works": [
-            {
-                "id": w.id,
-                "discipline_id": w.discipline_id,
-                "title": w.title,
-                "position_no": w.position_no,
-            }
-            for w in works
         ],
     }
 
@@ -253,7 +239,13 @@ async def create_session(payload: SessionCreate, db: DB, actor: Actor):
     await db.flush()
     existing = await response_for(queue, db)
     response = SessionCreated(
-        **existing.model_dump(exclude={"location", "stream_ids"}),
+        **existing.model_dump(exclude={"location", "stream_ids", "works"}),
+        works=[
+            {"work_id": work.id, "title": work.title, "priority": spec.priority}
+            for work, spec in sorted(
+                zip(works, payload.works, strict=True), key=lambda pair: pair[1].priority
+            )
+        ],
         stream_id=stream.id,
         auditorium=queue.auditorium,
         onlineLink=queue.online_link,

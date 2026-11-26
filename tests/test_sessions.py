@@ -98,6 +98,7 @@ def payload(ctx):
         "auditorium": "Room 101",
         "works": [{"title": w.title, "priority": 2 - i} for i, w in enumerate(ctx.works)],
         "quota": 1,
+        "registration_open": True,
     }
 
 
@@ -126,12 +127,19 @@ async def test_create_venue_stream_and_works(context, place):
     body = result.json()
     assert body["auditorium"] == place.get("auditorium")
     assert body["onlineLink"] == place.get("onlineLink")
+    assert [(w["title"], w["priority"]) for w in body["works"]] == [
+        (w["title"], w["priority"]) for w in sorted(data["works"], key=lambda w: w["priority"])
+    ]
     async with context.session() as db:
         assert await db.get(Stream, uuid.UUID(body["stream_id"]))
         assert await db.get(QueueStream, (uuid.UUID(body["id"]), uuid.UUID(body["stream_id"])))
         for item in body["works"]:
             work = await db.get(Work, uuid.UUID(item["work_id"]))
             assert work.discipline_id == context.discipline.id and work.is_active
+            assert work.title == item["title"]
+            assert work.position_no == next(
+                i for i, spec in enumerate(data["works"], 1) if spec["title"] == work.title
+            )
 
 
 async def test_create_rolls_back_on_error(context, monkeypatch):
@@ -219,7 +227,8 @@ async def test_work_validation_and_options(context):
     assert (await ctx.client.post("/api/v1/queues", json=data)).status_code == 422
     options = (await ctx.client.get("/api/v1/session-options")).json()
     assert str(ctx.discipline.id) in [d["id"] for d in options["disciplines"]]
-    assert str(ctx.works[0].id) in [w["id"] for w in options["works"]]
+    assert set(options) == {"disciplines", "teachers"}
+    assert str(ctx.teachers[0].id) in [t["id"] for t in options["teachers"]]
 
 
 async def test_registered_works_and_busy_teacher_are_preserved(context):

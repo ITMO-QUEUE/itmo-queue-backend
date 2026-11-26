@@ -30,12 +30,14 @@ class SessionCreate(BaseModel):
     onlineLink: str | None = Field(default=None, min_length=1, max_length=2000)
     avg_duration_min: int | None = Field(default=10, ge=1)
     quota: int | None = Field(default=None, ge=1)
-    registration_open: bool = True
+    registration_open: bool
     teacher_ids: list[uuid.UUID] = Field(min_length=1)
     works: list[SessionCreateWork] = Field(min_length=1)
 
     @model_validator(mode="after")
     def validate_session(self):
+        if not self.title.strip():
+            raise ValueError("title must not be blank")
         if self.planned_end <= self.planned_start:
             raise ValueError("planned_end must be after planned_start")
         if not (
@@ -111,6 +113,10 @@ class SessionRead(BaseModel):
     works: list[SessionWork]
 
 
+class SessionCreatedWork(SessionWork):
+    title: str
+
+
 class SessionCreated(BaseModel):
     id: uuid.UUID
     discipline_id: uuid.UUID
@@ -131,7 +137,7 @@ class SessionCreated(BaseModel):
     version: int
     stream_id: uuid.UUID
     teacher_ids: list[uuid.UUID]
-    works: list[SessionWork]
+    works: list[SessionCreatedWork]
 
 
 class RegistrationUpdate(BaseModel):
@@ -147,13 +153,6 @@ class Option(BaseModel):
     name: str
 
 
-class WorkOption(BaseModel):
-    id: uuid.UUID
-    discipline_id: uuid.UUID
-    title: str
-    position_no: int
-
-
 class TeacherOption(Option):
     discipline_ids: list[uuid.UUID]
 
@@ -161,4 +160,3 @@ class TeacherOption(Option):
 class SessionOptions(BaseModel):
     disciplines: list[Option]
     teachers: list[TeacherOption]
-    works: list[WorkOption]
