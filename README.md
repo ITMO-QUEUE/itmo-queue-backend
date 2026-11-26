@@ -206,3 +206,8 @@ docker compose exec backend python -m alembic upgrade head
 
 PostgreSQL — источник истины для очередей, истории, событий и уведомлений.
 Redis хранит сессии входа. ITMO.ID и клиентский TypeScript SDK не входят в MVP.
+
+## Сквозная проверка и demo-данные
+
+[Воспроизводимый HTTP smoke, подготовка аккаунтов и состояние интеграции frontend](docs/integration-smoke.md).
+Запуск: `python -m itmo_queue.smoke --origin http://localhost:5173`.
