@@ -254,7 +254,9 @@ async def test_registered_works_and_busy_teacher_are_preserved(context):
         )
         await db.commit()
     assert (
-        await ctx.client.patch(base, json={"works": [payload(ctx)["works"][0]]})
+        await ctx.client.patch(
+            base, json={"works": [{"work_id": str(ctx.works[0].id), "priority": 1}]}
+        )
     ).status_code == 409
     assert (
         await ctx.client.patch(base, json={"teacher_ids": [str(ctx.teachers[0].id)]})
