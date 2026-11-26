@@ -14,6 +14,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    String,
     Text,
     text,
 )
@@ -121,6 +122,8 @@ class Queue(Base):
     planned_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     planned_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     location: Mapped[str | None] = mapped_column(Text)
+    auditorium: Mapped[str | None] = mapped_column(String(2000))
+    online_link: Mapped[str | None] = mapped_column(String(2000))
     avg_duration_min: Mapped[int | None] = mapped_column(Integer)
     quota: Mapped[int | None] = mapped_column(Integer)
     stage: Mapped[QueueStage] = mapped_column(Enum(QueueStage, name="queue_stage"))

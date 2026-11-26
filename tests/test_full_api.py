@@ -91,8 +91,11 @@ async def api():
         students = [await create_user("student") for _ in range(6)]
         now = datetime.now(UTC)
 
+        queue_payloads = {}
+
         async def queue(**extra):
-            return await request(
+            stream_ids = extra.pop("stream_ids", [])
+            result = await request(
                 tc,
                 "POST",
                 "/queues",
@@ -103,23 +106,38 @@ async def api():
                     "planned_start": now.isoformat(),
                     "planned_end": (now + timedelta(hours=2)).isoformat(),
                     "teacher_ids": [teacher["id"], teacher2["id"]],
-                    "works": [{"work_id": w["id"], "priority": 2 - i} for i, w in enumerate(works)],
+                    "works": [
+                        {"title": w["title"], "priority": 2 - i} for i, w in enumerate(works)
+                    ],
+                    "auditorium": "Room 101",
                     "quota": 4,
                     **extra,
                 },
             )
+            await request(tc, "PATCH", "/queues/" + result["id"], json={"stream_ids": stream_ids})
+            by_priority = {w["priority"]: w["work_id"] for w in result["works"]}
+            queue_payloads[result["id"]] = {
+                "works": [
+                    {"work_id": by_priority[2 - i], "artifact_url": f"https://example.org/{i}"}
+                    for i in range(2)
+                ]
+            }
+            return result
 
         q = await queue()
         base = "/queues/" + q["id"]
-        payload = {
-            "works": [
-                {"work_id": w["id"], "artifact_url": f"https://example.org/{i}"}
-                for i, w in enumerate(works)
-            ]
-        }
+        payload = queue_payloads[q["id"]]
+        for i, w in enumerate(works):
+            w["id"] = payload["works"][i]["work_id"]
 
         async def enroll(index, url=base):
-            return await request(students[index][1], "POST", url + "/entries", 201, json=payload)
+            return await request(
+                students[index][1],
+                "POST",
+                url + "/entries",
+                201,
+                json=queue_payloads[url.rsplit("/", 1)[-1]],
+            )
 
         yield SimpleNamespace(
             app=app,
@@ -307,7 +325,18 @@ async def test_stream_access_auth_expiry_and_duplicate_enrollment(api):
         a.root, "PATCH", "/users/" + a.students[0][0]["id"], json={"stream_id": stream["id"]}
     )
     results = await asyncio.gather(
-        *[sc.post("/api/v1" + base + "/entries", json=a.payload) for _ in range(2)]
+        *[
+            sc.post(
+                "/api/v1" + base + "/entries",
+                json={
+                    "works": [
+                        {"work_id": w["work_id"], "artifact_url": "https://example.org/lab"}
+                        for w in q["works"]
+                    ]
+                },
+            )
+            for _ in range(2)
+        ]
     )
     assert sorted(r.status_code for r in results) == [201, 409]
     assert not (await request(sc, "GET", base))["my_entry"]["is_reserve"]

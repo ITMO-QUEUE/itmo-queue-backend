@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from itmo_queue.api.deps import get_current_user
@@ -19,6 +19,8 @@ from itmo_queue.models import (
     EntryStatus,
     Queue,
     QueueEntry,
+    QueueStream,
+    Stream,
     TeacherDiscipline,
     Work,
 )
@@ -93,7 +95,8 @@ def payload(ctx):
         "planned_start": (now - timedelta(days=2)).isoformat(),
         "planned_end": (now - timedelta(days=1)).isoformat(),
         "teacher_ids": [str(t.id) for t in ctx.teachers[:2]],
-        "works": [{"work_id": str(w.id), "priority": 2 - i} for i, w in enumerate(ctx.works)],
+        "auditorium": "Room 101",
+        "works": [{"title": w.title, "priority": 2 - i} for i, w in enumerate(ctx.works)],
         "quota": 1,
     }
 
@@ -101,7 +104,53 @@ def payload(ctx):
 async def create(ctx):
     result = await ctx.client.post("/api/v1/queues", json=payload(ctx))
     assert result.status_code == 201, result.text
+    async with ctx.session() as db:
+        by_id = {
+            w.id: w
+            for w in await db.scalars(
+                select(Work).where(
+                    Work.id.in_([uuid.UUID(w["work_id"]) for w in result.json()["works"]])
+                )
+            )
+        }
+        ctx.works = sorted(by_id.values(), key=lambda w: w.position_no)
     return result.json()
+
+
+@pytest.mark.parametrize("place", [{"auditorium": "3200"}, {"onlineLink": "https://ktalk.ru/a"}])
+async def test_create_venue_stream_and_works(context, place):
+    data = payload(context)
+    data.pop("auditorium")
+    result = await context.client.post("/api/v1/queues", json=data | place)
+    assert result.status_code == 201, result.text
+    body = result.json()
+    assert body["auditorium"] == place.get("auditorium")
+    assert body["onlineLink"] == place.get("onlineLink")
+    async with context.session() as db:
+        assert await db.get(Stream, uuid.UUID(body["stream_id"]))
+        assert await db.get(QueueStream, (uuid.UUID(body["id"]), uuid.UUID(body["stream_id"])))
+        for item in body["works"]:
+            work = await db.get(Work, uuid.UUID(item["work_id"]))
+            assert work.discipline_id == context.discipline.id and work.is_active
+
+
+async def test_create_rolls_back_on_error(context, monkeypatch):
+    async with context.session() as db:
+        before = [
+            await db.scalar(select(func.count()).select_from(m)) for m in (Queue, Stream, Work)
+        ]
+
+    async def fail(*args, **kwargs):
+        raise RuntimeError("injected failure")
+
+    monkeypatch.setattr("itmo_queue.api.v1.sessions.svc.event", fail)
+    with pytest.raises(RuntimeError, match="injected failure"):
+        await context.client.post("/api/v1/queues", json=payload(context))
+    async with context.session() as db:
+        after = [
+            await db.scalar(select(func.count()).select_from(m)) for m in (Queue, Stream, Work)
+        ]
+    assert before == after
 
 
 async def test_lifecycle_and_equal_teacher_rights(context):
@@ -163,7 +212,7 @@ async def test_access_and_validation(context):
 async def test_work_validation_and_options(context):
     ctx = context
     data = payload(ctx)
-    data["works"][0]["work_id"] = str(uuid.uuid4())
+    data["works"][0]["title"] = ""
     assert (await ctx.client.post("/api/v1/queues", json=data)).status_code == 422
     data = payload(ctx)
     data["works"].append(data["works"][0])
