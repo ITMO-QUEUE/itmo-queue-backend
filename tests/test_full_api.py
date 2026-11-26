@@ -418,3 +418,21 @@ async def test_wait_estimate_uses_defense_start_and_does_not_promise_when_overdu
         await db.commit()
     state = await request(viewer, "GET", base)
     assert state["wait_status"] == "overdue" and state["estimated_wait_minutes"] is None
+
+
+async def test_chosen_student_call_requires_confirmation_and_is_idempotent(api):
+    a = api
+    await a.enroll(0)
+    await a.enroll(1)
+    await request(a.tc, "POST", a.base + "/activate")
+    selected = a.base + "/students/" + a.students[1][0]["id"]
+    await request(a.tc, "PATCH", selected, 409, json={"status": "called"})
+    waiting = (await request(a.tc, "GET", a.base))["students"]
+    assert all(p["status"] == "waiting" for p in waiting)
+    payload = {"status": "called", "confirm_out_of_order": True}
+    first = await request(a.tc, "PATCH", selected, json=payload)
+    repeated = await request(a.tc, "PATCH", selected, json=payload)
+    assert repeated["attempt_id"] == first["attempt_id"]
+    await request(a.tc2, "PATCH", selected, 409, json=payload)
+    history = await request(a.tc, "GET", a.base + "/history")
+    assert len(history) == 1 and history[0]["called_out_of_order"] is True
