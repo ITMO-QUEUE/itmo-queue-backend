@@ -111,6 +111,7 @@ async def api():
                     ],
                     "auditorium": "Room 101",
                     "quota": 4,
+                    "registration_open": True,
                     **extra,
                 },
             )

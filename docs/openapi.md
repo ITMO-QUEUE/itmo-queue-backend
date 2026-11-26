@@ -39,7 +39,7 @@ SameSite=Lax, Secure включён по умолчанию. Для локаль
 | GET/POST `/disciplines`, PATCH `/disciplines/{discipline_id}` | Справочник дисциплин |
 | GET/POST `/streams` | Справочник потоков |
 | GET/POST `/works`, PATCH `/works/{work_id}` | Работы, их порядок и активность |
-| GET `/session-options` | Дисциплины, преподаватели с допусками и работы для формы |
+| GET `/session-options` | Дисциплины и преподаватели с допусками для формы |
 | GET/POST `/queues`, GET/PATCH `/queues/{queue_id}` | Поиск, создание, просмотр и настройки сеанса |
 | POST `/queues/{queue_id}/registration` | Открыть/закрыть запись: `{"open":true}` |
 | POST `/queues/{queue_id}/activate` | Начать активную защиту |
@@ -70,7 +70,7 @@ SameSite=Lax, Secure включён по умолчанию. Для локаль
 Создание сеанса: `discipline_id`, `title`, `planned_start`, `planned_end`
 (ISO 8601 с часовым поясом), `teacher_ids`, `works: [{title, priority}]` и хотя бы
 одно из `auditorium`, `onlineLink`. Дополнительно: `description`, `quota`,
-`avg_duration_min` (по умолчанию 10), `registration_open` (по умолчанию true).
+`avg_duration_min` (по умолчанию 10); `registration_open` обязателен.
 Поток и работы создаются автоматически; ответ содержит `stream_id` и идентификаторы
 работ. Для доступа студентов администратору нужно назначить им этот `stream_id`.
 При наличии обоих адресов старое поле `location` получает значение аудитории.

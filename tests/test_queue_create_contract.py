@@ -18,6 +18,7 @@ def payload():
         "teacher_ids": [str(uuid4())],
         "works": [{"title": "Lab", "priority": 1}],
         "auditorium": "3200",
+        "registration_open": True,
     }
 
 
@@ -31,6 +32,8 @@ def test_new_creation_contract():
     online = data | {"auditorium": None, "onlineLink": "https://ktalk.ru"}
     assert SessionCreate.model_validate(online).onlineLink
     for invalid in (
+        {key: value for key, value in data.items() if key != "registration_open"},
+        data | {"title": "   "},
         data | {"auditorium": None},
         data | {"auditorium": "   "},
         data | {"location": "old"},
@@ -49,6 +52,11 @@ def test_openapi_uses_creation_only_schema():
     assert post["security"]
     create = schema["components"]["schemas"]["SessionCreate"]["properties"]
     assert {"auditorium", "onlineLink", "works"} <= create.keys()
+    assert "registration_open" in schema["components"]["schemas"]["SessionCreate"]["required"]
+    created_work = schema["components"]["schemas"]["SessionCreatedWork"]["properties"]
+    assert {"work_id", "title", "priority"} <= created_work.keys()
+    options = schema["components"]["schemas"]["SessionOptions"]["properties"]
+    assert set(options) == {"disciplines", "teachers"}
     assert "location" not in create and "stream_ids" not in create
     update = schema["components"]["schemas"]["SessionUpdate"]["properties"]
     assert {"location", "stream_ids", "works"} <= update.keys()
