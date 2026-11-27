@@ -167,6 +167,16 @@ async def test_cookie_multiwork_privacy_and_filters(api):
     assert len(entry["works"]) == 2
     assert [w["priority"] for w in entry["works"]] == [1, 2]
     assert entry["is_top3"] is True
+    position = entry["position"]
+    updated_payload = {
+        "works": [
+            {"work_id": a.works[0]["id"], "artifact_url": "https://example.org/updated"},
+        ]
+    }
+    updated = await request(a.students[0][1], "PATCH", a.base + "/entries/me", json=updated_payload)
+    assert updated["position"] == position
+    assert updated["works"][0]["artifact_url"] == "https://example.org/updated"
+    assert updated["works"][0]["work_id"] == a.works[0]["id"]
     own = await request(a.students[0][1], "GET", a.base)
     assert own["my_entry"]["works"][0]["artifact_url"]
     other = await request(a.students[1][1], "GET", a.base)

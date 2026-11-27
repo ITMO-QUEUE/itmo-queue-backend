@@ -62,6 +62,7 @@ async def test_openapi(client):
         "/api/v1/students",
         "/api/v1/students/{student_id}",
         "/api/v1/queues/{queue_id}/entries",
+        "/api/v1/queues/{queue_id}/entries/me",
         "/api/v1/queues/{queue_id}/entries/{entry_id}",
         "/api/v1/queues/{queue_id}/entries/{entry_id}/move-to-end",
         "/api/v1/queues/{queue_id}/swaps",

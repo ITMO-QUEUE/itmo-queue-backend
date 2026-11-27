@@ -48,6 +48,7 @@ SameSite=Lax, Secure включён по умолчанию. Для локаль
 | GET `/me/history`, GET `/students/{student_id}/history` | Своя история / чужая (admin) |
 | GET `/queues/{queue_id}/history` | История сеанса для его преподавателей/admin |
 | POST `/queues/{queue_id}/entries` | Записаться на список работ |
+| PATCH `/queues/{queue_id}/entries/me` | Изменить свои работы и ссылки без изменения места |
 | DELETE `/queues/{queue_id}/entries/me` | Отменить свою запись |
 | POST `/queues/{queue_id}/entries/me/move-to-end` | Один самостоятельный перенос в конец |
 | POST `/queues/{queue_id}/entries/me/switch/{queue_number}` | Предложить обмен с позицией >3 |
