@@ -2,7 +2,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from itmo_queue.api.deps import get_current_user
@@ -94,6 +94,59 @@ async def cancel(queue_id, session, current_user, entry_id=None):
 @router.delete("/me", status_code=204, operation_id="cancelMyEntry")
 async def cancel_me(queue_id: uuid.UUID, session: DB, current_user: Actor):
     await cancel(queue_id, session, current_user)
+
+
+@router.patch(
+    "/me",
+    response_model=Participant,
+    operation_id="updateMyEntryWorks",
+    summary="Update selected works and artifact links without changing queue position",
+)
+async def update_my_entry(
+    queue_id: uuid.UUID, payload: Enrollment, session: DB, current_user: Actor
+):
+    """Replace a student's selected works while preserving the queue entry itself.
+
+    The queue row and its ordering fields are intentionally left untouched. Updates are
+    allowed while the entry is waiting; once a student is called, the submitted works
+    are part of the active attempt and cannot be changed.
+    """
+    if current_user.role not in ("student", "admin"):
+        raise HTTPException(403, "Student access required")
+    queue = await svc.get_queue(session, queue_id, current_user, lock=True)
+    svc.mutable(queue)
+    entry = await svc.own_entry(session, queue_id, current_user)
+    if entry.status != EntryStatus.waiting:
+        raise HTTPException(409, "Cannot change works after the student was called")
+
+    allowed = set(
+        await session.scalars(
+            select(QueueWork.work_id)
+            .join(Work, Work.id == QueueWork.work_id)
+            .where(QueueWork.queue_id == queue_id, Work.is_active.is_(True))
+        )
+    )
+    if not {work.work_id for work in payload.works} <= allowed:
+        raise HTTPException(400, "This work is not allowed for this queue")
+
+    await session.execute(delete(EntryWork).where(EntryWork.entry_id == entry.id))
+    session.add_all(
+        [
+            EntryWork(
+                entry_id=entry.id,
+                queue_id=queue_id,
+                work_id=work.work_id,
+                artifact_url=str(work.artifact_url),
+            )
+            for work in payload.works
+        ]
+    )
+    entry.updated_at = svc.now()
+    await session.flush()
+    await svc.event(session, queue, current_user)
+    result = await svc.participant(session, queue, entry, current_user)
+    await session.commit()
+    return result
 
 
 @router.delete("/{entry_id}", status_code=204, operation_id="cancelEntry")
